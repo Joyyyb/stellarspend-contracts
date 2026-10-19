@@ -70,15 +70,27 @@ impl DelegationContract {
     /// - Pre-existing delegations have their `limit` updated but `spent` is
     ///   preserved, preventing a re-grant from resetting accumulated usage.
     pub fn set_delegation(env: Env, owner: Address, delegate: Address, limit: i128) {
+        if let Err(e) = Self::grant(env.clone(), owner, delegate, limit) {
+            panic_with_error!(&env, e);
+        }
+    }
+
+    /// Authorises `delegate` to spend up to `limit` on behalf of `owner`,
+    /// returning a typed error instead of panicking.
+    ///
+    /// # Errors
+    /// - [`Error::InvalidAddress`] if `owner == delegate` ([SEC-DEL-02]).
+    /// - [`Error::InvalidAmount`] if `limit <= 0` ([SEC-DEL-03]).
+    pub fn grant(env: Env, owner: Address, delegate: Address, limit: i128) -> Result<(), Error> {
         owner.require_auth();
 
         // [SEC-DEL-02] Self-delegation guard.
         if owner == delegate {
-            panic_with_error!(&env, Error::InvalidAddress);
+            return Err(Error::InvalidAddress);
         }
         // [SEC-DEL-03] Positive-limit guard.
         if limit <= 0 {
-            panic_with_error!(&env, Error::InvalidAmount);
+            return Err(Error::InvalidAmount);
         }
 
         let key = DelegationDataKey::Allowance(owner.clone(), delegate.clone());
@@ -102,6 +114,8 @@ impl DelegationContract {
             ),
             limit,
         );
+
+        Ok(())
     }
 
     /// Revokes all delegation rights granted by `owner` to `delegate`.
