@@ -197,14 +197,16 @@ mod tests {
 
     #[test]
     fn authorization_accepts_the_admin_with_mocked_auth() {
+        use crate::Contract;
+
         let env = Env::default();
         let admin = Address::generate(&env);
 
+        let contract_id = env.register(Contract, ());
         env.mock_all_auths();
 
-        assert_eq!(
-            validate_authorization(&admin, &admin),
-            Ok(())
-        );
+        env.as_contract(&contract_id, || {
+            assert_eq!(validate_authorization(&admin, &admin), Ok(()));
+        });
     }
 }
