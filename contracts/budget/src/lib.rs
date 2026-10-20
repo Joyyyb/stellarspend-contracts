@@ -51,6 +51,33 @@ impl Contract {
         Ok(())
     }
 
+    /// Updates the admin-configured value.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidAmount`] if `value` is negative.
+    /// Returns [`Error::NotInitialized`] if the contract has not been initialized.
+    /// Returns [`Error::Unauthorized`] if `admin` is not the administrator.
+    pub fn set_value(env: Env, admin: Address, value: i128) -> Result<(), Error> {
+        admin.require_auth();
+        if value < 0 {
+            return Err(Error::InvalidAmount);
+        }
+        let config = storage::read_config(&env).ok_or(Error::NotInitialized)?;
+        if config.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+        env.storage().instance().set(&types::DataKey::Value, &value);
+        Ok(())
+    }
+
+    /// Returns the admin-configured value, or `0` if it has never been set.
+    pub fn get_value(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&types::DataKey::Value)
+            .unwrap_or(0)
+    }
+
     /// Creates a new budget for `user` and returns its id.
     #[allow(clippy::too_many_arguments)]
     pub fn create_budget(
