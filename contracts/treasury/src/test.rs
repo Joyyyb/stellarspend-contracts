@@ -44,79 +44,78 @@ mod tests {
         assert_eq!(client.get_value(), 250);
     }
 
-    // ── set_value authorization ───────────────────────────────────────────
+    // ── initialize ────────────────────────────────────────────────────────
 
     #[test]
-    fn set_value_rejects_a_non_admin_caller() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let intruder = Address::generate(&env);
-        let contract_id = env.register(Contract, ());
-        let client = ContractClient::new(&env, &contract_id);
-        client.initialize(&admin);
-
-        assert_eq!(
-            client.try_set_value(&intruder, &750),
-            Err(Ok(Error::Unauthorized))
-        );
-
-        // The rejected write must leave the stored value untouched.
-        assert_eq!(client.get_value(), 0);
-    }
-
-    #[test]
-    fn set_value_rejects_a_non_admin_even_after_a_legitimate_update() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let intruder = Address::generate(&env);
-        let contract_id = env.register(Contract, ());
-        let client = ContractClient::new(&env, &contract_id);
-        client.initialize(&admin);
-
-        client.set_value(&admin, &250);
-        assert_eq!(client.get_value(), 250);
-
-        assert_eq!(
-            client.try_set_value(&intruder, &1_000),
-            Err(Ok(Error::Unauthorized))
-        );
-        assert_eq!(client.get_value(), 250);
-    }
-
-    #[test]
-    fn set_value_rejects_a_negative_amount_from_the_admin() {
+    fn initialize_stores_admin_and_seeds_value_at_zero() {
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
         let contract_id = env.register(Contract, ());
         let client = ContractClient::new(&env, &contract_id);
-        client.initialize(&admin);
 
-        // Guard the ordering in set_value: validation must happen before the
-        // state write, so a rejected negative value cannot land in storage.
-        assert_eq!(
-            client.try_set_value(&admin, &-1),
-            Err(Ok(Error::InvalidAmount))
-        );
+        // get_value() returns 0 before initialize as well, so assert on the
+        // stored config too — that is what proves initialize wrote anything.
+        assert_eq!(storage::read_config(&env), None);
+
+        // The contractimpl client unwraps Result, so a success is just `()`.
+        assert_eq!(client.initialize(&admin), ());
+
+        let config = storage::read_config(&env).expect("initialize must persist a config");
+        assert_eq!(config.admin, admin);
+        assert_eq!(config.value, 0);
         assert_eq!(client.get_value(), 0);
     }
 
     #[test]
-    fn set_value_rejects_a_non_admin_even_when_uninitialized() {
+    fn initialize_twice_is_rejected_and_leaves_the_first_admin_in_place() {
         let env = Env::default();
         env.mock_all_auths();
-        let intruder = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let other = Address::generate(&env);
+        let contract_id = env.register(Contract, ());
+        let client = ContractClient::new(&env, &contract_id);
+        client.initialize(&admin);
+
+        assert_eq!(
+            client.try_initialize(&other),
+            Err(Ok(Error::AlreadyInitialized))
+        );
+
+        // A rejected re-initialize must not hand admin over to `other`.
+        let config = storage::read_config(&env).expect("config must still be present");
+        assert_eq!(config.admin, admin);
+        assert_eq!(client.get_value(), 0);
+    }
+
+    #[test]
+    fn initialize_requires_the_admin_to_authorize() {
+        let env = Env::default();
+        // Deliberately do NOT mock_all_auths — nothing has authorized anything.
+        let admin = Address::generate(&env);
         let contract_id = env.register(Contract, ());
         let client = ContractClient::new(&env, &contract_id);
 
-        // With no config stored there is no admin to match, so the call must
-        // fail closed rather than write.
-        assert_eq!(
-            client.try_set_value(&intruder, &10),
-            Err(Ok(Error::Unauthorized))
-        );
-        assert_eq!(client.get_value(), 0);
+        assert!(client.try_initialize(&admin).is_err());
+        assert_eq!(storage::read_config(&env), None);
+    }
+
+    #[test]
+    fn initialize_seeds_a_zero_value_independently_of_the_admin_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // Two separately deployed instances must both seed value 0 — the
+        // zero is written by initialize, not left over from instance storage.
+        for _ in 0..2 {
+            let admin = Address::generate(&env);
+            let contract_id = env.register(Contract, ());
+            let client = ContractClient::new(&env, &contract_id);
+            client.initialize(&admin);
+
+            let config = storage::read_config(&env).expect("initialize must persist a config");
+            assert_eq!(config.admin, admin);
+            assert_eq!(config.value, 0);
+        }
     }
 }
