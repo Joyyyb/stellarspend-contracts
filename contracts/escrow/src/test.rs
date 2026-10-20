@@ -47,6 +47,20 @@ mod tests {
     }
 
     #[test]
+    fn initialize_sets_value_to_zero() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(crate::Contract, ());
+        let client = crate::ContractClient::new(&env, &contract_id);
+        let admin = soroban_sdk::Address::generate(&env);
+
+        client.initialize(&admin);
+
+        assert_eq!(client.get_value(), 0);
+    }
+
+    #[test]
     fn set_value_negative_amount_returns_invalid_amount() {
         let env = Env::default();
         env.mock_all_auths();

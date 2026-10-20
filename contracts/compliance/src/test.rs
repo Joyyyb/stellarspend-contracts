@@ -77,4 +77,21 @@ mod tests {
         assert_eq!(i128::MAX.checked_sub(-1), None);
         assert_eq!(i128::MIN.checked_mul(-1), None);
     }
+
+    #[test]
+    fn set_value_from_non_admin_returns_unauthorized() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(crate::Contract, ());
+        let client = crate::ContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let result = client.try_set_value(&non_admin, &100_i128);
+        assert_eq!(result, Err(Ok(crate::Error::Unauthorized)));
+        assert_eq!(client.get_value(), 0);
+    }
 }
