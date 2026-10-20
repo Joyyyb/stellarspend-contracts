@@ -1,7 +1,20 @@
 #[cfg(test)]
 mod tests {
+    use crate::{Contract, ContractClient};
     use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::Env;
+    use soroban_sdk::{Address, Env};
+
+    #[test]
+    fn initialize_sets_zero_value() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(Contract, ());
+        let client = ContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin);
+        assert_eq!(client.get_value(), 0);
+    }
 
     #[test]
     fn happy_path_environment() {
@@ -29,3 +42,4 @@ mod tests {
         assert_eq!(i128::MAX.checked_add(1), None);
     }
 }
+
